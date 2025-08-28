@@ -59,6 +59,9 @@ Notes:
   - The script assumes that the orthophotos are georeferenced to a known coordinate system.
   - The master frame approach can improve the robustness of the homography estimation but may require extra processing.
   - Additional configurations can be set in the main configuration file (default: cfg/default.yaml) and its associated config files.
+  - Video decoding behavior may vary across different systems due to variations in FFmpeg backend versions used by OpenCV,
+    potentially affecting frame extraction consistency and georeferencing results. For reproducible outputs across
+    environments, ensure consistent OpenCV and FFmpeg versions.
 """
 
 import argparse
