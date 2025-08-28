@@ -58,15 +58,14 @@ Visualization Options:
     -sh, --show         : Visualize results during processing (default: False).
     -vm, --viz-mode <int> : Set visualization mode for the output video: 0 - original,
                         1 - stabilized, 2 - reference frame (default: 0).
-    -pt, --plot-trajectories : Plot trajectories on the reference frame at the beginning
-                        of the video (default: False).
-    -pd, --plot-delay <int> : Delay in frames for plotting trajectories (default: 30).
+    -pt, --plot-trajectories : Plot trajectories on the reference frame (default: False).
+    -pd, --plot-delay <int> : Number of frames to plot trajectories when --plot-trajectories is enabled (default: 30).
     -sc, --show-conf    : Show confidence values (default: False).
     -sl, --show-lanes   : Show lane numbers (default: False).
     -scn, --show-class-names : Show class names (default: False).
     -hl, --hide-labels  : Hide labels entirely (default: False).
     -ht, --hide-tracks  : Hide trailing tracking lines (default: False).
-    -hs, --hide-speed   : Hide speed values (default: False).
+    -hs, --hide-speed   : Hide speed values (if available) (default: False).
     -cf, --class-filter <int> [<int> ...] : Exclude specified classes (e.g., -cf 1 2) (default: None).
 
 Examples:
@@ -265,13 +264,13 @@ def parse_cli_args() -> argparse.Namespace:
     group.add_argument('--show', '-sh', action='store_true', help='Visualize results during processing')
     parser.add_argument('--viz-mode', '-vm', type=int, default=0, choices=[0, 1, 2], help='Set visualization mode for the output video: 0 - original, 1 - stabilized, 2 - reference frame')
     parser.add_argument("--plot-trajectories", "-pt", action="store_true", help='Plot trajectories on the reference frame')
-    parser.add_argument("--plot-delay", "-pd", type=int, default=30, help='Delay in frames for plotting trajectories')
+    parser.add_argument("--plot-delay", "-pd", type=int, default=30, help='Number of frames to plot trajectories when --plot-trajectories is enabled')
     parser.add_argument("--show-conf", "-sc", action="store_true", help='Show confidence values')
     parser.add_argument("--show-lanes", "-sl", action="store_true", help='Show lane numbers')
     parser.add_argument("--show-class-names", "-scn", action="store_true", help='Show class names')
     parser.add_argument("--hide-labels", "-hl", action="store_true", help='Hide labels entirely')
     parser.add_argument("--hide-tracks", "-ht", action="store_true", help='Hide trailing tracking lines')
-    parser.add_argument("--hide-speed", "-hs", action="store_true", help='Hide speed values')
+    parser.add_argument("--hide-speed", "-hs", action="store_true", help='Hide speed values (if available)')
     parser.add_argument('--class-filter', '-cf', type=int, nargs='+', help='Exclude specified classes (e.g., -cf 1 2)')
 
     return parser.parse_args()

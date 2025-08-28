@@ -31,7 +31,7 @@ Additional Visualization Options:
   --viz-mode, -vm <int> : Set visualization mode for the output video: 0 - original, 
                         1 - stabilized, 2 - reference frame (default: 0).
   --plot-trajectories, -pt : Plot trajectories on the reference frame (default: False).
-  --plot-delay, -pd <int> : Delay in frames for plotting trajectories (default: 30).
+  --plot-delay, -pd <int> : Number of frames to plot trajectories when --plot-trajectories is enabled (default: 30).
   --show-conf, -sc    : Show confidence values (default: False).
   --show-lanes, -sl   : Show lane numbers (default: False).
   --show-class-names, -scn : Show class names (default: False).
@@ -468,7 +468,7 @@ def parse_cli_args() -> argparse.Namespace:
     group.add_argument('--show', '-sh', action='store_true', help='Visualize results during processing')
     parser.add_argument('--viz-mode', '-vm', type=int, default=0, choices=[0, 1, 2], help='Set visualization mode for the output video: 0 - original, 1 - stabilized, 2 - reference frame')
     parser.add_argument('--plot-trajectories', '-pt', action='store_true', help='Plot trajectories on the reference frame')
-    parser.add_argument('--plot-delay', '-pd', type=int, default=30, help='Delay in frames for plotting trajectories')
+    parser.add_argument("--plot-delay", "-pd", type=int, default=30, help='Number of frames to plot trajectories when --plot-trajectories is enabled')
     parser.add_argument('--show-conf', '-sc', action='store_true', help='Show confidence values')
     parser.add_argument('--show-lanes', '-sl', action='store_true', help='Show lane numbers')
     parser.add_argument('--show-class-names', '-scn', action='store_true', help='Show class names')
