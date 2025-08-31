@@ -43,7 +43,8 @@ dev = [
     "onnxsim>=0.4.1",
     "thop>=0.1.1",
     "pycocotools>=2.0.6",
-    "pyproj>=3.6.1"
+    "pyproj>=3.6.1",
+    "pysrt>=1.1.2"
 ]
 
 [project.urls]
