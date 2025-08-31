@@ -5,63 +5,70 @@
 """
 analyze_bb_ratios.py - Vehicle Bounding Box Ratio Analysis
 
-Analyzes length-to-width ratios of vehicle bounding boxes from tracking data. Processes
-individual videos or directories recursively, extracting dimensional statistics for
-different vehicle classes and generating visualization plots.
+This script analyzes the length-to-width ratios of vehicle bounding boxes based on detection and tracking data.
+It can process a single data file or recursively scan a directory of files. For each processed file, it estimates
+vehicle dimensions and calculates the length-to-width ratio.
 
-The script estimates vehicle dimensions using geometric analysis and computes statistical
-distributions of L/W ratios per vehicle class for dataset characterization.
+The script aggregates these ratios by vehicle class and computes descriptive statistics (mean, standard deviation,
+median, min/max, and percentiles). It can also generate and display histograms for the ratio distribution of each
+vehicle class.
 
 Usage:
   python tools/analyze_bb_ratios.py <source> [options]
 
 Arguments:
-  source : Path to YAML file or directory containing tracking data.
+  source              : Path to a video/yaml file or a directory containing tracking data.
 
 Options:
-  -h, --help         : Show this help message and exit.
-  -v, --verbose      : Print detailed results per video (default: False).
-  -p, --plot         : Plot length and height histograms during calculation (default: False).
-  -hs, --hist        : Plot ratio histograms per vehicle class (default: False).
-  -i, --id <int>     : Vehicle ID to analyze in detail (default: 0).
-  -l, --lines <int>  : Number of output lines to print (default: 5).
+  -h, --help          : Show this help message and exit.
+  -v, --verbose       : Print detailed statistical results for each video file processed.
+  -hs, --hist         : Generate and display a histogram of length-to-width ratios for each vehicle class.
+  -p, --plot          : Plot length and height histogram per video and vehicle ID.
+  -i, --id <int>      : Specify a vehicle ID for detailed analysis.
 
 Examples:
-1. Analyze single video:
+1. Analyze a single video file with verbose output:
    python tools/analyze_bb_ratios.py video.yaml --verbose
 
-2. Batch analysis with histograms:
-   python tools/analyze_bb_ratios.py data/ --hist --plot
+2. Perform a batch analysis on a directory and show histograms:
+   python tools/analyze_bb_ratios.py data/ --hist
 
-3. Detailed analysis of specific vehicle:
+3. Analyze a specific vehicle ID from a video:
    python tools/analyze_bb_ratios.py video.yaml --id 42 --verbose
 
 Input:
-- YAML configuration files associated with videos
-- Corresponding tracking results in .txt format (results/ subdirectory)
-- Tracking data format: frame, ID, bbox coordinates, class, dimensions
+- A path to a video file (e.g., .mp4, .mov), a YAML configuration file, or a directory.
+- Corresponding tracking data must be available in a '.txt' file located in a 'results/' subdirectory
+  (e.g., for 'data/video.mp4', the script expects 'data/results/video.txt').
+- The tracking file should contain columns for frame number, object ID, class ID, and vehicle dimensions (length and width).
 
 Output:
-- Statistical summary per vehicle class (mean, std, median, percentiles)
-- Optional histogram plots for ratio distributions
-- Console output with detailed analysis results
+- Console output summarizing the statistical analysis of length-to-width ratios for each vehicle class,
+  including count, mean, standard deviation, median, min/max, and various percentiles.
+- If the '--hist' option is used, matplotlib plots showing the distribution of the ratios for each class.
 
 Notes:
-- Requires corresponding .txt tracking files in results/ subdirectory
-- Uses restrictive tau_c thresholds to filter stationary vehicles
-- Vehicle classes: Car, Bus, Truck, Motorcycle, Pedestrian, Bicycle
-- Data format specific to geo-trax paper experiments (DOI: 10.1016/j.trc.2025.105205)
+- The script uses restrictive thresholds for vehicle speed (tau_c) and orientation change (theta_bar_deg)
+  to filter out stationary or erratically moving vehicles from the analysis.
+- It ignores any files located directly within a 'results/' directory to avoid processing its own output.
+- Vehicle classes are predefined as: Car, Bus, Truck, Motorcycle, Pedestrian, Bicycle.
+- The data format is specific to the experiments in the geo-trax paper (DOI: 10.1016/j.trc.2025.105205).
 """
 
 import argparse
 import copy
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from compare_dimension_estimators import estimate_vehicle_dimensions
+from compare_dimension_estimators import estimate_vehicle_dimensions_new
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))  # Add project root directory to Python path
+from utils.utils import detect_delimiter
 
 DEFAULT_CLASS_NAMES = ['Car', 'Bus', 'Truck', 'Motorcycle', 'Pedestrian', 'Bicycle']
+VIDEO_FORMATS = {'.mp4', '.mov', '.avi', '.mkv'}
 
 # Set tau_c such that stationary vehicles are ignored in this analysis
 tau_c_restrictive = {
@@ -91,9 +98,9 @@ def main(args):
     analyze_results(results, args)
 
 
-def process_dir(dir, args):
+def process_dir(directory, args):
     all_class_ratios = {}
-    for file in sorted(dir.iterdir()):
+    for file in sorted(directory.iterdir()):
         if file.is_file():
             class_ratios = process_file(file, args)
             all_class_ratios = append_results(all_class_ratios, class_ratios)
@@ -107,15 +114,23 @@ def process_dir(dir, args):
 
 
 def process_file(file, args):
-    # Check if the file is a a valid YAML file
-    if file.suffix != '.yaml' or file.parent.name == 'results':
+    # Check if the input is a valid video file or a YAML file
+    if file.suffix.lower() not in {'.yaml'} | VIDEO_FORMATS:
+        return None
+    # Check if the file is in the results directory
+    if file.parent.name == 'results':
         return None
 
     # Load tracks
     tracks_txt_file = Path(f"{str(file.parent / 'results' / file.stem)}.txt")
     if not tracks_txt_file.exists():
         return None
-    tracks = np.loadtxt(tracks_txt_file, delimiter='')
+
+    # Detect delimiter
+    delimiter = detect_delimiter(tracks_txt_file)
+
+    # Load tracks
+    tracks = np.loadtxt(tracks_txt_file, delimiter=delimiter)
 
     # Modify args to process the file
     args = copy.deepcopy(args)
@@ -123,7 +138,7 @@ def process_file(file, args):
 
     # Estimate vehicle dimensions
     print(f"Processing: {tracks_txt_file}")
-    tracks = estimate_vehicle_dimensions(tracks, args, tau_c=tau_c_restrictive, theta_bar_deg=theta_bar_deg_restrictive)
+    tracks = estimate_vehicle_dimensions_new(tracks, args, tau_c=tau_c_restrictive, theta_bar_deg=theta_bar_deg_restrictive)
 
     # Extract the width and length ratios per vehicle class
     class2ratios = extract_ratios(tracks)
@@ -143,8 +158,8 @@ def extract_ratios(tracks):
     unique_cls = np.unique(tracks[:, idx_c]).astype(int)
     class2ratios = {c: [] for c in unique_cls}
     for class_id in unique_cls:
-        for id in unique_ids:
-            mask = (tracks[:, 1] == id) & (tracks[:, idx_c] == class_id)
+        for vehicle_id in unique_ids:
+            mask = (tracks[:, 1] == vehicle_id) & (tracks[:, idx_c] == class_id)
             if np.sum(mask) > 0:
                 L = tracks[mask, -2][0]
                 W = tracks[mask, -1][0]
@@ -218,12 +233,11 @@ def analyze_results(class2ratios, args):
 def get_cli_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Analyze vehicle bounding box ratios from tracking data")
-    parser.add_argument("source", type=Path, help="Path to YAML file or directory containing tracking data")
+    parser.add_argument("source", type=Path, help="Path to a directory containing detection and tracking results or to a specific video/yaml file")
     parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed results per video")
-    parser.add_argument("--plot", "-p", action="store_true", help="Plot length and height histograms")
     parser.add_argument("--hist", "-hs", action="store_true", help="Plot ratio histograms per vehicle class")
-    parser.add_argument("--id", "-i", type=int, default=0, help="Vehicle ID to analyze in detail (default: 0)")
-    parser.add_argument("--lines", "-l", type=int, default=5, help="Number of output lines to print (default: 5)")
+    parser.add_argument("--plot", "-p", action="store_true", help="Plot length and height histogram per video and vehicle ID")
+    parser.add_argument("--id", "-i", type=int, default=0, help="Vehicle ID to analyze in detail (default: User prompt)")
     return parser.parse_args()
 
 

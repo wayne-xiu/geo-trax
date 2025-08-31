@@ -5,45 +5,43 @@
 """
 compare_dimension_estimators.py - Vehicle Dimension Estimation Comparison
 
-Compares old and new methods for estimating vehicle dimensions from tracking data.
-The old method uses area percentiles and bbox ratio filtering, while the new method
-employs azimuth-based trajectory analysis for improved accuracy.
+This script compares two methods for estimating vehicle dimensions from tracking data:
+1) Old Method: uses area percentile filtering and bounding box aspect ratio thresholds.
+2) New Method: uses azimuth-based trajectory filtering with configurable thresholds.
+
+The new method has been finally implemented in Geo-trax, see DOI: 10.1016/j.trc.2025.105205.
+
+Both methods can optionally plot histograms of vehicle length and width distributions
+for a selected vehicle ID, allowing visual comparison of raw (old) and filtered (new)
+measurements.
 
 Usage:
-  python tools/compare_dimension_estimators.py <source> [options]
+    python tools/compare_dimension_estimators.py <source> [options]
 
 Arguments:
-  source : Path to video file or YAML configuration file.
+    source : Video file or YAML configuration file containing video metadata.
 
 Options:
-  -p, --plot         : Plot length/width histograms for detailed analysis (default: False).
-  -i, --id <int>     : Vehicle ID to analyze in detail (default: 0).
-  -l, --lines <int>  : Number of output lines to display (default: 5).
+    -p, --plot     Plot length and width histograms for the chosen vehicle ID.
+    -i, --id <int> Vehicle ID to analyze and plot (default: 0).
+    -l, --lines <int> Number of output lines from each method to display (default: 5).
 
 Examples:
-1. Compare methods for video:
-   python tools/compare_dimension_estimators.py video.mp4
-
-2. Detailed analysis with plots:
-   python tools/compare_dimension_estimators.py video.yaml --plot --id 42
+    python tools/compare_dimension_estimators.py video.mp4
+    python tools/compare_dimension_estimators.py video.yaml --plot --id 42
 
 Input:
-- Video file or YAML configuration with tracking results in results/ subdirectory
-- Tracking data format: frame, ID, bbox coordinates, class information
+    Tracking results should be in a text file under the 'results/' directory next to the source.
 
 Output:
-- Timing comparison between old and new methods
-- Statistical analysis of dimension differences (max, mean, median)
-- Track IDs with maximum differences for further investigation
-- Optional histogram plots for specified vehicle IDs
-
-Notes:
-- Requires pre-computed tracking results in results/ subdirectory
-- New method uses azimuth-based filtering with configurable thresholds
-- Old method relies on area percentiles and bbox ratio thresholds
+    - Timing of each method (if plotting is disabled).
+    - Statistical comparison of dimensions (max, mean, median differences).
+    - Vehicle IDs with maximum length and width differences.
+    - Optional histogram plots for both old and new methods when --plot is enabled.
 """
 
 import argparse
+import sys
 import time
 from pathlib import Path
 
@@ -53,6 +51,9 @@ import numpy as np
 import pandas as pd
 import yaml
 
+sys.path.append(str(Path(__file__).resolve().parents[1]))  # Add project root directory to Python path
+from utils.utils import detect_delimiter
+
 GSD_150 = 0.0282  # meters per pixel at 3840x2160 resolution and 150m altitude
 GSD_140 = 0.0263  # meters per pixel at 3840x2160 resolution and 140m altitude
 GSD = (GSD_150 + GSD_140) / 2
@@ -60,27 +61,32 @@ GSD = (GSD_150 + GSD_140) / 2
 tau_c = {
     0: 1.83,  # car (vans, SUVs, etc.)
     1: 2.85,  # bus
-    2: 1.7,  # truck
-    3: 1.8,  # motorcycle
+    2: 1.7,   # truck
+    3: 1.8,   # motorcycle
     -1: 1.7,
 }  # unknown
 
-VIDEO_FORMATS = ['.mp4', '.MP4', '.mov', '.MOV']
+VIDEO_FORMATS = {'.mp4', '.mov', '.avi', '.mkv'}
 
 
 def main(args):
     # Load tracks associated with the video (need to run tracking first)
     tracks_txt_file = Path(f"{str(args.source.parent / 'results' / args.source.stem)}.txt")
-    tracks = np.loadtxt(tracks_txt_file, delimiter=' ')
+
+    # Detect delimiter
+    delimiter = detect_delimiter(tracks_txt_file)
+
+    # Load tracks
+    tracks = np.loadtxt(tracks_txt_file, delimiter=delimiter)
 
     # Estimate vehicle dimensions with the old method
     start_time = time.time()
-    tracks_old = estimate_vehicle_dimensions_old(tracks)
+    tracks_old = estimate_vehicle_dimensions_old(tracks, args)
     time_old = time.time() - start_time
 
     # Estimate vehicle dimensions with the new method
     start_time = time.time()
-    tracks_new = estimate_vehicle_dimensions(tracks, args)
+    tracks_new = estimate_vehicle_dimensions_new(tracks, args)
     time_new = time.time() - start_time
 
     # print the time taken for each method
@@ -127,7 +133,7 @@ def analyse_results(tracks_new, tracks_old, args):
     print(f'New (W):    {tracks_new[idx_L_max][-1]:<20.4f}{tracks_new[idx_W_max][-1]:<20.4f}')
 
 
-def estimate_vehicle_dimensions(tracks, args, eps=4, r0=1.25, GSD=GSD, theta_bar_deg=15, tau_c=tau_c):
+def estimate_vehicle_dimensions_new(tracks, args, eps=4, r0=1.25, GSD=GSD, theta_bar_deg=15, tau_c=tau_c):
     # determine the radius for the azimuth-based filtering
     r = r0 / GSD
 
@@ -135,11 +141,11 @@ def estimate_vehicle_dimensions(tracks, args, eps=4, r0=1.25, GSD=GSD, theta_bar
     theta_bar = np.deg2rad(theta_bar_deg)
 
     # get video resolution
-    if args.source.suffix == '.yaml':
+    if args.source.suffix.lower() == '.yaml':
         with open(args.source, 'r') as f:
             video_info = yaml.load(f, Loader=yaml.FullLoader)
         w_I, h_I = video_info['main']['video']['w_I'], video_info['main']['video']['h_I']
-    elif args.source.suffix in VIDEO_FORMATS:
+    elif args.source.suffix.lower() in VIDEO_FORMATS:
         cap = cv2.VideoCapture(str(args.source))
         w_I, h_I = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap.release()
@@ -178,8 +184,8 @@ def estimate_vehicle_dimensions(tracks, args, eps=4, r0=1.25, GSD=GSD, theta_bar
         id2y_centers[id].append(y_center)
         id2class.setdefault(id, v_class)
 
-    # plot the distribution of vehicle lengths and widths
-    plot_histograms(id2lengths, id2widths, args, 'Step 2')
+    # plot the distribution of vehicle lengths and widths (initial raw measurements)
+    plot_histograms(id2lengths, id2widths, args, 'New Method - Initial (Step 2)')
 
     # Step 3: azimuth-based filtering
     for id in unique_ids:
@@ -227,8 +233,8 @@ def estimate_vehicle_dimensions(tracks, args, eps=4, r0=1.25, GSD=GSD, theta_bar
         id2lengths[id] = lengths[mask]
         id2widths[id] = widths[mask]
 
-    # plot the distribution of vehicle lengths and widths
-    plot_histograms(id2lengths, id2widths, args, 'Step 3')
+    # plot the distribution of vehicle lengths and widths (after azimuth-based filtering)
+    plot_histograms(id2lengths, id2widths, args, 'New Method - Azimuth Filtered (Step 3)')
 
     # Step 4: final dimension computation
     id2length, id2width = {}, {}
@@ -250,7 +256,7 @@ def estimate_vehicle_dimensions(tracks, args, eps=4, r0=1.25, GSD=GSD, theta_bar
     return tracks
 
 
-def estimate_vehicle_dimensions_old(tracks, bbox_ratio_threshold=1.25, percentile_lower=25, percentile_upper=75):
+def estimate_vehicle_dimensions_old(tracks, args, bbox_ratio_threshold=1.25, percentile_lower=25, percentile_upper=75):
     # filter tracks with id != -1 directly in numpy array
     valid_tracks = tracks[tracks[:, 1] != -1]
 
@@ -267,6 +273,8 @@ def estimate_vehicle_dimensions_old(tracks, bbox_ratio_threshold=1.25, percentil
         w, h = track[4], track[5]
         id2v_lengths[id_].append(max(w, h))
         id2v_widths[id_].append(min(w, h))
+    # plot histograms for old method before filtering
+    plot_histograms(id2v_lengths, id2v_widths, args, 'Old Method - Raw')
 
     id2v_length = {}
     id2v_width = {}
@@ -309,17 +317,17 @@ def estimate_vehicle_dimensions_old(tracks, bbox_ratio_threshold=1.25, percentil
 
 def plot_histograms(id2lengths, id2widths, args, title):
     if args.plot:
-        id = args.id
-        if id == 0:
-            while id <= 0:
-                id = int(input("Enter a valid ID to plot: "))
-                if id not in id2lengths:
-                    print(f"ID {id} not found in the tracks")
-            args.id = id
+        vehicle_id = args.id
+        if vehicle_id == 0:
+            while vehicle_id <= 0:
+                vehicle_id = int(input("Enter a valid ID to plot: "))
+                if vehicle_id not in id2lengths:
+                    print(f"ID {vehicle_id} not found in the tracks")
+            args.id = vehicle_id
 
-        plt.hist(id2lengths[id], bins=50, alpha=0.5, label='Vehicle Lengths')
-        plt.hist(id2widths[id], bins=50, alpha=0.5, label='Vehicle Widths')
-        plt.title(f'ID {id} - {title}')
+        plt.hist(id2lengths[vehicle_id], bins=50, alpha=0.5, label='Vehicle Lengths')
+        plt.hist(id2widths[vehicle_id], bins=50, alpha=0.5, label='Vehicle Widths')
+        plt.title(f'ID {vehicle_id} - {title}')
         plt.legend(loc='upper right')
         plt.show()
 

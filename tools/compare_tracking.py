@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Author: Robert Fonod (robert.fonod@ieee.org)
+
 """
 Compare tracking results from two different vehicle tracking algorithms.
 
@@ -7,7 +11,7 @@ It processes tracking results from multiple videos, computes statistical metrics
 generates comprehensive visualizations to highlight differences between the algorithms.
 
 Usage:
-    python compare_tracking.py INPUT [--show] [--save]
+    python tools/compare_tracking.py INPUT [--show] [--save]
 
 Arguments:
     INPUT                    Path to folder containing video files with tracking results
