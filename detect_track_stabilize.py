@@ -88,7 +88,7 @@ def track_with_model(model: Union[YOLO, RTDETR], config: Dict, logger: logging.L
     reader, pbar = initialize_streams(config['main'], config['ultralytics']['imgsz'], logger)
     stabilizer = Stabilizer(**config['stabilo'])
 
-    frame_num, yolo_time, stab_time = 0, [], []
+    frame_num, yolo_time, stab_time, track_time = 0, [], [], []
     frame_arr, track_id, bbox, bbox_stab, class_id, conf, transforms = [], [], [], [], [], [], []
 
     try:
@@ -100,10 +100,13 @@ def track_with_model(model: Union[YOLO, RTDETR], config: Dict, logger: logging.L
                 continue
 
             if success:
+                track_start = time.time()
                 results = model.track(frame, **config['ultralytics'], persist=True)
+                total_track_time = 1000 * (time.time() - track_start)
                 boxes = results[0].boxes
                 speed = results[0].speed
                 yolo_time.append(sum(speed.values()))
+                track_time.append(total_track_time - sum(speed.values()))
 
                 class_freq = {c: 0 for c in config['ultralytics']['classes']}
                 if len(boxes) > 0:
@@ -139,7 +142,7 @@ def track_with_model(model: Union[YOLO, RTDETR], config: Dict, logger: logging.L
             else:
                 break
 
-            update_progress_bar(pbar, class_freq, speed, stab_time, config['main'])
+            update_progress_bar(pbar, class_freq, speed, track_time, stab_time, config['main'])
             if config['main']['args'].cut_frame_right is not None and frame_num >= config['main']['args'].cut_frame_right:
                 break
 
@@ -152,8 +155,9 @@ def track_with_model(model: Union[YOLO, RTDETR], config: Dict, logger: logging.L
         pbar.total = frame_num
         pbar.refresh()
         logger.info(f"Average YOLOv8 (preprocess + inference + postprocess) time: {sum(yolo_time) / len(yolo_time):5.1f}ms.")
+        logger.info(f"Average tracking time: {sum(track_time) / len(track_time):5.1f}ms") if track_time else None
         logger.info(f"Average stabilization time: {sum(stab_time) / len(stab_time):5.1f}ms") if stab_time else None
-        logger.info(f"Average pipeline time: {1000 / ((sum(yolo_time) + sum(stab_time)) / (1 + frame_num)):4.1f}fps.")
+        logger.info(f"Average pipeline time: {1000 / ((sum(yolo_time) + sum(track_time) + sum(stab_time)) / (1 + frame_num)):4.1f}fps.")
     finally:
         reader.release()
         pbar.close()
@@ -203,7 +207,7 @@ def initialize_streams(config: Dict, imgsz: int, logger: logging.Logger) -> Tupl
     return reader, pbar
 
 
-def update_progress_bar(pbar: tqdm, class_freq: Dict, speed: Dict, stab_time: list, config: Dict) -> None:
+def update_progress_bar(pbar: tqdm, class_freq: Dict, speed: Dict, track_time: list, stab_time: list, config: Dict) -> None:
     """
     Update the progress bar with additional information.
     """
@@ -212,6 +216,7 @@ def update_progress_bar(pbar: tqdm, class_freq: Dict, speed: Dict, stab_time: li
         postfix_txt['pre-proc'] = f'{speed["preprocess"]:.1f}ms'
         postfix_txt['infer'] = f'{speed["inference"]:.1f}ms'
         postfix_txt['post-proc'] = f'{speed["postprocess"]:.1f}ms'
+        postfix_txt['track'] = f'{track_time[-1]:.1f}ms' if track_time else 'N/A'
         postfix_txt['stab'] = f'{stab_time[-1]:.1f}ms' if stab_time else 'N/A'
         pbar.set_postfix(postfix_txt)
 
